@@ -186,7 +186,53 @@ export function trackMetaEvent(
   }
 
   persistEventId(eventName, eventId)
+  logMetaPixelEvent(eventName, eventId, payload)
   return eventId
+}
+
+function logMetaPixelEvent(
+  eventName: string,
+  eventId: string,
+  customData: MetaCustomData | undefined,
+): void {
+  if (!canUseBrowserApi()) return
+
+  const backendUrl = process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL
+  const storeId = process.env.NEXT_PUBLIC_STORE_ID
+  const publishableKey = process.env.NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY
+  if (!backendUrl || !storeId || !publishableKey) return
+
+  const url =
+    typeof window.location !== 'undefined' ? window.location.pathname + window.location.search : null
+  const referrer = typeof document !== 'undefined' ? document.referrer || null : null
+
+  const payload = {
+    event_name: eventName,
+    event_id: eventId,
+    source: 'browser' as const,
+    url,
+    metadata: {
+      ...(customData ?? {}),
+      ...(referrer ? { referrer } : {}),
+    },
+  }
+
+  try {
+    fetch(`${backendUrl}/store/meta-pixel/events`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Store-Environment-ID': storeId,
+        'x-publishable-api-key': publishableKey,
+      },
+      body: JSON.stringify(payload),
+      keepalive: true,
+    }).catch(() => {
+      // Meta pixel logging must never break the storefront
+    })
+  } catch {
+    // ignore
+  }
 }
 
 export function trackMetaPageView(url?: string): string | null {
